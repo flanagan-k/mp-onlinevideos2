@@ -1,15 +1,19 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.ServiceModel;
 using System.Threading;
 using System.Windows.Forms;
+using MediaPortal.Common;
+using MediaPortal.Common.Logging;
 using MediaPortal.Common.MediaManagement;
-using MediaPortal.Common.MediaManagement.DefaultItemAspects;
 using MediaPortal.Common.ResourceAccess;
 using MediaPortal.Common.Services.ResourceAccess.RawUrlResourceProvider;
+using MediaPortal.UI.Control.InputManager;
 using MediaPortal.UI.Presentation.Players;
+using MediaPortal.UI.SkinEngine.InputManagement;
 using OnlineVideos.Helpers;
 using OnlineVideos.Sites;
 using OnlineVideos.Sites.Proxy.WebBrowserPlayerService;
@@ -20,7 +24,7 @@ namespace OnlineVideos.MediaPortal2
     /// <summary>
     /// Player which automates a web browser - will minimise MediaPortal and shell to the WebBrowserHost when play is requested
     /// </summary>
-    public class WebBrowserVideoPlayer : IPlayer//, OVSPLayer
+    public class WebBrowserVideoPlayer : IPlayer, IPlayerEvents
     {
         public const string ONLINEVIDEOSBROWSER_MIMETYPE = "video/onlinebrowser";
 
@@ -35,6 +39,14 @@ namespace OnlineVideos.MediaPortal2
         private readonly WebBrowserPlayerCallback _callback = new WebBrowserPlayerCallback();
         private WebBrowserPlayerServiceProxy _serviceProxy;
         private string _fileOrUrl;
+
+        // Player event delegates
+        protected PlayerEventDlgt _started = null;
+        protected PlayerEventDlgt _stateReady = null;
+        protected PlayerEventDlgt _stopped = null;
+        protected PlayerEventDlgt _ended = null;
+        protected PlayerEventDlgt _playbackStateChanged = null;
+        protected PlayerEventDlgt _playbackError = null;
 
         public bool GoFullscreen { get; set; }
         public string SubtitleFile { get; set; }
@@ -135,7 +147,7 @@ namespace OnlineVideos.MediaPortal2
                                             _automationType,
                                             string.IsNullOrEmpty(_username) ? "_" : _username,
                                             string.IsNullOrEmpty(_password) ? "_" : _password);
-            _browserProcess.StartInfo.WindowStyle = ProcessWindowStyle.Maximized;
+            _browserProcess.StartInfo.WindowStyle = ProcessWindowStyle.Normal; // ProcessWindowStyle.Maximized;
 
             // Restart MP or Restore MP Window if needed
             _browserProcess.Exited += BrowserProcess_Exited;
@@ -161,28 +173,43 @@ namespace OnlineVideos.MediaPortal2
             return true;
         }
 
-        ///// <summary>
-        ///// When a new action is received we'll forward them to the browser host using a WCF service
-        ///// </summary>
-        ///// <param name="action"></param>
-        //private void GUIWindowManager_OnNewAction(MediaPortal.GUI.Library.Action action)
-        //{
-        //    // Forward the key on to the browser process 
-        //    if (_browserProcess != null)
-        //    {
-        //        try
-        //        {
-        //            if (_serviceProxy == null) ReinitialiseService();
-        //            _serviceProxy.OnNewAction(action.wID.ToString());
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            OnlineVideos.Log.Error(ex);
-        //            ReinitialiseService(); // Attempt to reinitialise the connection to the service
-        //            _serviceProxy.OnNewAction(action.wID.ToString());
-        //        }
-        //    }
-        //}
+        private readonly Dictionary<Key, string> KEY_MAPPINGS = new Dictionary<Key, string>
+        {
+            { Key.Play, "ACTION_PLAY" },
+            { Key.PlayPause, "ACTION_PLAY" },
+            { Key.Pause, "ACTION_PAUSE" },
+            { Key.Stop, "ACTION_STOP" },
+            { Key.Info, "ACTION_CONTEXT_MENU" }
+        };
+
+        //TODO: no result yet
+        /// <summary>
+        /// When a new action is received we'll forward them to the browser host using a WCF service
+        /// </summary>
+        /// <param name="key"></param>
+        private void InstanceOnKeyPressed(ref Key key)
+        {
+            // Forward the key on to the browser process 
+            if (_browserProcess != null)
+            {
+                string action;
+                if (!KEY_MAPPINGS.TryGetValue(key, out action))
+                    return;
+
+                try
+                {
+                    if (_serviceProxy == null) ReinitialiseService();
+                    _serviceProxy.OnNewAction(action);
+                    key = Key.None; // Handled
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex);
+                    ReinitialiseService(); // Attempt to reinitialise the connection to the service
+                    _serviceProxy.OnNewAction(action);
+                }
+            }
+        }
 
         /// <summary>
         /// Read the standard streams using a separate thread
@@ -211,6 +238,7 @@ namespace OnlineVideos.MediaPortal2
             _browserProcess = null;
             if (!string.IsNullOrEmpty(_lastError))
                 Log.Error(_lastError);
+            Ended();
         }
 
         /// <summary>
@@ -225,6 +253,7 @@ namespace OnlineVideos.MediaPortal2
             if (suspend) //suspend and hide MediaPortal
             {
                 //InputDevices.Stop(); //stop input devices so they don't interfere when the browser player starts listening
+                InputManager.Instance.KeyPressed += InstanceOnKeyPressed;
                 //GUIWindowManager.OnNewAction += GUIWindowManager_OnNewAction;
 
                 // Minimise MePo to tray - this is preferrable 
@@ -235,6 +264,7 @@ namespace OnlineVideos.MediaPortal2
             else //resume Mediaportal
             {
                 //GUIWindowManager.OnNewAction -= GUIWindowManager_OnNewAction;
+                InputManager.Instance.KeyPressed -= InstanceOnKeyPressed;
 
                 //InputDevices.Init();
 
@@ -378,13 +408,79 @@ namespace OnlineVideos.MediaPortal2
         }
         #endregion
 
+        protected void Ended()
+        {
+            State = PlayerState.Ended;
+            FireEnded();
+        }
+
         public void Stop()
         {
-
+            State = PlayerState.Ended;
+            FireEnded();
         }
 
         public string Name { get; private set; }
         public PlayerState State { get; private set; }
         public string MediaItemTitle { get; private set; }
+
+        #region Event handling
+
+        protected void FireStarted()
+        {
+            if (_started != null)
+                _started(this);
+        }
+
+        protected void FireStateReady()
+        {
+            if (_stateReady != null)
+                _stateReady(this);
+        }
+
+        protected void FireStopped()
+        {
+            if (_stopped != null)
+                _stopped(this);
+        }
+
+        protected void FireEnded()
+        {
+            if (_ended != null)
+                _ended(this);
+        }
+
+        protected void FirePlaybackStateChanged()
+        {
+            if (_playbackStateChanged != null)
+                _playbackStateChanged(this);
+        }
+
+        #endregion
+
+        #region IPlayerEvents implementation
+
+        public void InitializePlayerEvents(PlayerEventDlgt started, PlayerEventDlgt stateReady, PlayerEventDlgt stopped,
+            PlayerEventDlgt ended, PlayerEventDlgt playbackStateChanged, PlayerEventDlgt playbackError)
+        {
+            _started = started;
+            _stateReady = stateReady;
+            _stopped = stopped;
+            _ended = ended;
+            _playbackStateChanged = playbackStateChanged;
+            _playbackError = playbackError;
+        }
+
+        public void ResetPlayerEvents()
+        {
+            _started = null;
+            _stateReady = null;
+            _stopped = null;
+            _ended = null;
+            _playbackStateChanged = null;
+            _playbackError = null;
+        }
+
+        #endregion
     }
 }
