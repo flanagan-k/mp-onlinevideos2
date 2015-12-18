@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.ServiceModel;
 using System.Threading;
 using System.Windows.Forms;
@@ -140,7 +141,7 @@ namespace OnlineVideos.MediaPortal2
             //_browserProcess.StartInfo.FileName = "plugins\\Windows\\OnlineVideos\\OnlineVideos.Sites.WebAutomation.BrowserHost.exe";
             var dir = OnlineVideoSettings.Instance.DllsDir;
 
-            _browserProcess.StartInfo.FileName = Path.Combine(OnlineVideoSettings.Instance.DllsDir, "OnlineVideos.WebAutomation.BrowserHost.exe");
+            _browserProcess.StartInfo.FileName = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "OnlineVideos.WebAutomation.BrowserHost.exe");
             _browserProcess.StartInfo.Arguments = string.Format("\"{0} \" \"{1}\" \"{2}\" \"{3}\" \"{4}\"",
                                             dir,
                                             _fileOrUrl,
