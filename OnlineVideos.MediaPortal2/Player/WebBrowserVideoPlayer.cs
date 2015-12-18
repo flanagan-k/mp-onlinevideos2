@@ -14,6 +14,7 @@ using MediaPortal.Common.ResourceAccess;
 using MediaPortal.Common.Services.ResourceAccess.RawUrlResourceProvider;
 using MediaPortal.UI.Control.InputManager;
 using MediaPortal.UI.Presentation.Players;
+using MediaPortal.UI.Presentation.Screens;
 using MediaPortal.UI.SkinEngine.InputManagement;
 using OnlineVideos.Helpers;
 using OnlineVideos.Sites;
@@ -253,9 +254,7 @@ namespace OnlineVideos.MediaPortal2
 
             if (suspend) //suspend and hide MediaPortal
             {
-                //InputDevices.Stop(); //stop input devices so they don't interfere when the browser player starts listening
                 InputManager.Instance.KeyPressed += InstanceOnKeyPressed;
-                //GUIWindowManager.OnNewAction += GUIWindowManager_OnNewAction;
 
                 // Minimise MePo to tray - this is preferrable 
                 ToggleMinimise(true);
@@ -264,18 +263,12 @@ namespace OnlineVideos.MediaPortal2
             }
             else //resume Mediaportal
             {
-                //GUIWindowManager.OnNewAction -= GUIWindowManager_OnNewAction;
                 InputManager.Instance.KeyPressed -= InstanceOnKeyPressed;
-
-                //InputDevices.Init();
 
                 // Resume Mediaportal rendering
                 ToggleMinimise(false);
 
                 ProcessHelper.SetForeground("mp2-client");
-
-                //GUIGraphicsContext.ResetLastActivity();
-
 
                 _mpWindowHidden = false;
             }
@@ -288,27 +281,10 @@ namespace OnlineVideos.MediaPortal2
         /// <param name="shouldMinimise"></param>
         private void ToggleMinimise(bool shouldMinimise)
         {
-            //var bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy;
-            //var formType = GUIGraphicsContext.form.GetType();
-
-            //var exitToTrayProperty = formType.GetField("ExitToTray", bindingFlags);
-            //var toggleMinimiseToTrayMethod = formType.GetMethod(shouldMinimise ? "MinimizeToTray" : "RestoreFromTray", bindingFlags);
-            //var autoHideTaskBarProperty = formType.GetField("AutoHideTaskbar", bindingFlags);
-            //var hideTaskBarMethod = formType.GetMethod("HideTaskBar", bindingFlags);
-
-            //if (exitToTrayProperty != null) exitToTrayProperty.SetValue(GUIGraphicsContext.form, shouldMinimise);
-            //if (toggleMinimiseToTrayMethod != null) toggleMinimiseToTrayMethod.Invoke(GUIGraphicsContext.form, null);
-
-            //// If we're minimising to tray, re-hide the task bar if it's set to autohide
-            //if (shouldMinimise)
-            //{
-            //    if (autoHideTaskBarProperty != null)
-            //    {
-            //        var propertyValue = autoHideTaskBarProperty.GetValue(GUIGraphicsContext.form);
-            //        if (propertyValue != null && propertyValue.ToString().ToLower() == "true")
-            //            if (hideTaskBarMethod != null) hideTaskBarMethod.Invoke(GUIGraphicsContext.form, new object[] { true });
-            //    }
-            //}
+            if (shouldMinimise)
+                ServiceRegistration.Get<IScreenControl>().Minimize();
+            else
+                ServiceRegistration.Get<IScreenControl>().Restore();
         }
 
         /// <summary>
